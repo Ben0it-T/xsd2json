@@ -1,0 +1,11 @@
+# General
+.DS_Store
+._*
+_*
+*.sublime-project
+*.sublime-workspace
+
+.venv/*
+input/*
+output/*
+!.gitkeep
