@@ -233,6 +233,10 @@ class XSDParser:
         Returns:
             bool: True if the element is an <xsd:include> or <xsd:import>, False otherwise.
         """
+
+        if element.tag is etree.Comment:
+           return False
+
         qname = etree.QName(element.tag)
         return True if qname.namespace == "http://www.w3.org/2001/XMLSchema" and (qname.localname == 'include' or qname.localname == 'import') else False
 
