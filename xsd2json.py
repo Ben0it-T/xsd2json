@@ -368,6 +368,7 @@ class XSDParser:
         description = {}
 
         for complex_type in tree.xpath('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+            export_as_properties = True
             name = complex_type.attrib.get('name')
             if not name:
                 continue
@@ -389,6 +390,12 @@ class XSDParser:
             if complexContent is not None:
                 complex_types_defs[name] = self.xsd_complex_content_to_json(complexContent)
 
+
+            attributes = complex_type.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if attributes is not None:
+                export_as_properties = True
+
+
             choice = complex_type.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if choice is not None:
                 complex_types_defs[name] = self.xsd_choice_tp_json(choice)
@@ -397,13 +404,22 @@ class XSDParser:
             if sequence is not None:
                 complex_types_defs[name] = self.xsd_sequence_to_json(sequence)
 
+            if attributes is not None:
+                if name not in complex_types_defs:
+                    complex_types_defs[name] = {'type': "object", 'properties':{}}
+
+                for attribute in attributes:
+                    attribute_def = self.xsd_attribute_to_json(attribute)
+                    if attribute_def:
+                        complex_types_defs[name]['properties'].update(attribute_def)
+
             if description:
                 complex_types_defs[name].update(description)
 
 
             for element in complex_type:
                 tag = etree.QName(element).localname
-                if tag not in ["annotation", "simpleContent", "complexContent", "choice", "sequence"]:
+                if tag not in ["annotation", "simpleContent", "complexContent", "choice", "sequence", "attribute"]:
                     self.xsd_not_supported(tag)
 
         return complex_types_defs
@@ -589,6 +605,43 @@ class XSDParser:
             description += ' '.join(documentation.text.split()) + ' '
 
         return {'description': description.strip()}
+
+
+    def xsd_attribute_to_json(self, element):
+        """
+        Return the JSON Schema equivalent for the XML Schema attribute
+
+        Args:
+            element (etree.Element): XML element to processed
+
+        Returns:
+            dict: JSON Schema representation for the XML attribute
+        """
+
+        # xsd:attribute attributes
+        # @name: Optional. Specifies the name of the attribute. Name and ref attributes cannot both be present
+        # @type: Optional. Specifies a built-in data type or a simple type. The type attribute can only be present when the content does not contain a simpleType element
+        # @use: Optional. Specifies how the attribute is used. Values: optional, prohibited, required
+        type_ = element.attrib.get('type', '').split(':')[-1] or None
+        name = element.attrib.get('name')
+        use = element.attrib.get('use')
+
+        attribute_defs = {}
+
+        if use == "prohibited" or not name:
+            return attribute_defs
+
+
+        if type_ is not None:
+            if type_ in self.xsd_data_types:
+                # built-in data type
+                attribute_defs[name] = self.xsd_data_type_to_json(type_)
+
+            else:
+                # simpleType or complexType element
+                attribute_defs[name] = {'$ref': f"#/$defs/{type_}"}
+
+        return attribute_defs
 
 
     def xsd_choice_tp_json(self, tree, export_as_properties = False):
