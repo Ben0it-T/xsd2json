@@ -130,19 +130,19 @@ class XSDParser:
 
         # Extract top-level simpleType
         print(f"\nExtract simpleType")
-        self.simple_type_defs = self.extract_simple_types(self.xsd_flatten)
-        print(f"  > simpleType: {len(self.simple_type_defs)}")
+        self.xsd_simple_type_defs = self.extract_simple_types(self.xsd_flatten)
+        print(f"  > simpleType: {len(self.xsd_simple_type_defs)}")
         prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
         json_filename = f"{output_path}/{prefix}_simple_type_defs.json"
-        self.json_to_file(json_filename, self.simple_type_defs)
+        self.json_to_file(json_filename, self.xsd_simple_type_defs)
 
         # Extract top-level complexType
         print(f"\nExtract complexType")
-        self.complex_type_defs = self.extract_complex_types(self.xsd_flatten)
-        print(f"  > complexType: {len(self.complex_type_defs)}")
+        self.xsd_complex_type_defs = self.extract_complex_types(self.xsd_flatten)
+        print(f"  > complexType: {len(self.xsd_complex_type_defs)}")
         prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
         json_filename = f"{output_path}/{prefix}_complex_type_defs.json"
-        self.json_to_file(json_filename, self.complex_type_defs)
+        self.json_to_file(json_filename, self.xsd_complex_type_defs)
 
         # Create JSON Schema with defs
         print(f"\nCreate JSON schema with defs")
@@ -158,8 +158,8 @@ class XSDParser:
 
         # Add full defs
         full_defs = {}
-        full_defs.update(self.simple_type_defs)
-        full_defs.update(self.complex_type_defs)
+        full_defs.update(self.xsd_simple_type_defs)
+        full_defs.update(self.xsd_complex_type_defs)
         json_schema_with_defs["$defs"] =  full_defs
 
         # Write JSON Schema to file
@@ -319,9 +319,9 @@ class XSDParser:
 
         # xsd:simpleType content (annotation?,(restriction|list|union))
         simple_types_defs = {}
-        description = {}
 
         for simple_type in tree.xpath('./xsd:simpleType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+            description = {}
             name = simple_type.attrib.get('name')
             print(f"  - {name}")
 
@@ -331,7 +331,7 @@ class XSDParser:
 
             restriction = simple_type.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if restriction is not None:
-                simple_types_defs[name] = self.xsd_restriction_to_json(restriction)
+                simple_types_defs[name] = self.xsd_restriction_to_json(restriction, "simpleType")
 
             list_ = simple_type.find('./xsd:list', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if list_ is not None:
@@ -672,7 +672,7 @@ class XSDParser:
 
         restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
-            complex_content_schema = self.xsd_restriction_to_json(restriction)
+            complex_content_schema = self.xsd_restriction_to_json(restriction, "complexContent")
 
         extension = tree.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
@@ -845,12 +845,13 @@ class XSDParser:
         return extension
 
 
-    def xsd_restriction_to_json(self, element):
+    def xsd_restriction_to_json(self, element, parent_tag):
         """
         Return the JSON Schema equivalent for the XML Restrictions/Facets
 
         Args:
             element (etree.Element): XML element to processed
+            parent_tag (str): parent element tag
 
         Returns:
             dict: JSON Schema representation of the XML Restrictions/Facets
@@ -862,55 +863,65 @@ class XSDParser:
         # @any attributes  : Optional. Specifies any other attributes with non-schema namespace
         type_ = element.attrib.get('base', '').split(':')[-1] or None
 
+        if type_ in self.xsd_data_types:
+            # built-in data type
+            restriction = self.xsd_data_type_to_json(type_)
+        else:
+            restriction = {'type': "string"}
+
         # xsd:restriction content
         # simpleType:     (annotation?,(simpleType?,(minExclusive|minInclusive|maxExclusive|maxInclusive|totalDigits|fractionDigits|length|minLength|maxLength|enumeration|whiteSpace|pattern)*))
         # simpleContent:  (annotation?,(simpleType?,(minExclusive|minInclusive|maxExclusive|maxInclusive|totalDigits|fractionDigits|length|minLength|maxLength|enumeration|whiteSpace|pattern)*)?,((attribute|attributeGroup)*,anyAttribute?))
         # complexContent: (annotation?,(group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))
 
-        # Actually only support built-in data type
-        # TODO: parent is simpleType, simpleContent or complexContent
+        if parent_tag == "simpleType" or parent_tag == "simpleContent":
+            enums = []
+            for elem in list(element):
+                localname = etree.QName(elem.tag).localname
+                value = f"{elem.attrib['value']}"
 
-        restriction = self.xsd_data_type_to_json(type_)
-        enums = []
-        for elem in list(element):
-            localname = etree.QName(elem.tag).localname
-            value = f"{elem.attrib['value']}"
-
-            if localname == "enumeration":
-                enums.append(value)
-            elif localname == "length":
-                restriction["minLength"] = int(value)
-                restriction["maxLength"] = int(value)
-            elif localname == "maxExclusive":
-                if self.json_schema == "draft-04":
-                    restriction["maximum"] = int(value)
-                    restriction["exclusiveMaximum"] = True
-                else:
-                    restriction["exclusiveMaximum"] = int(value)
-            elif localname == "maxInclusive":
-                restriction["maximum"] = int(value)
-            elif localname == "maxLength":
+                if localname == "enumeration":
+                    enums.append(value)
+                elif localname == "length":
+                    restriction["minLength"] = int(value)
                     restriction["maxLength"] = int(value)
-            elif localname == "minExclusive":
-                if self.json_schema == "draft-04":
+                elif localname == "maxExclusive":
+                    if self.json_schema == "draft-04":
+                        restriction["maximum"] = int(value)
+                        restriction["exclusiveMaximum"] = True
+                    else:
+                        restriction["exclusiveMaximum"] = int(value)
+                elif localname == "maxInclusive":
+                    restriction["maximum"] = int(value)
+                elif localname == "maxLength":
+                        restriction["maxLength"] = int(value)
+                elif localname == "minExclusive":
+                    if self.json_schema == "draft-04":
+                        restriction["minimum"] = int(value)
+                        restriction["exclusiveMinimum"] = True
+                    else:
+                        restriction["exclusiveMinimum"] = int(value)
+                elif localname == "minInclusive":
                     restriction["minimum"] = int(value)
-                    restriction["exclusiveMinimum"] = True
-                else:
-                    restriction["exclusiveMinimum"] = int(value)
-            elif localname == "minInclusive":
-                restriction["minimum"] = int(value)
-            elif localname == "minLength":
-                restriction["minLength"] = int(value)
-            elif localname ==  "pattern":
-                # TODO: id pattern already has "^...$"
-                restriction["pattern"] = f"^{value}$"
-            else:
-                # totalDigits, fractionDigits, whiteSpace
-                # ...
-                print(f"    ❌ Restrictions/facets '{localname}' not supported")
+                elif localname == "minLength":
+                    restriction["minLength"] = int(value)
+                elif localname ==  "pattern":
+                    # TODO: id pattern already has "^...$"
+                    restriction["pattern"] = f"^{value}$"
+                elif localname in ["totalDigits", "fractionDigits", "whiteSpace"]:
+                    print(f"    ❌ Restrictions/facets '{localname}' not supported")
 
-        if enums:
-            restriction["enum"] = enums
+            if enums:
+                restriction["enum"] = enums
+
+        if parent_tag == "complexContent":
+            choice = element.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if choice is not None:
+                restriction = self.xsd_choice_tp_json(choice)
+
+            sequence = element.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if sequence is not None:
+                restriction = self.xsd_sequence_to_json(sequence)
 
         return restriction
 
@@ -1005,7 +1016,7 @@ class XSDParser:
 
         restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
-            simple_content_schema = self.xsd_restriction_to_json(restriction)
+            simple_content_schema = self.xsd_restriction_to_json(restriction, "simpleContent")
 
         extension = tree.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
@@ -1040,7 +1051,7 @@ class XSDParser:
 
         restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
-            simple_type_schema = self.xsd_restriction_to_json(restriction)
+            simple_type_schema = self.xsd_restriction_to_json(restriction, "simpleType")
 
         list_ = tree.find('./xsd:list', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if list_ is not None:
