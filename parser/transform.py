@@ -1,276 +1,25 @@
 # -*- coding: utf-8 -*-
 
-"""
-xsd2json.py <inputfile>
-
-
-Requirements:
-- Python 3.10
-- jsonschema (https://pypi.org/project/jsonschema/)
-- lxml (https://pypi.org/project/lxml/)
-"""
-
-import copy
-import datetime
-import json
-import os
-import shutil
-import sys
-import urllib.request
-
-from jsonschema import Draft4Validator, Draft6Validator, Draft7Validator, Draft201909Validator, Draft202012Validator, ValidationError, exceptions
 from lxml import etree
-from os.path import exists as path_exists
-from pathlib import Path
 
 
+class Transformer:
 
-class XSDParser:
-
-    def __init__(self, xsd_file_path, json_schema):
-
-        # Check if xsd_file_path in an XSD Schema
-        if not self.is_xsd_file(xsd_file_path):
-            print(f'❌ <inputfile> is not a valid XSD file')
-            sys.exit()
-
-        # Create output directory
-        output_path = './output'
-        if not path_exists(output_path):
-            os.makedirs(output_path)
-
-        # Vars
-        xsd_filename = os.path.basename(xsd_file_path)
-        self.xsd_path = os.path.dirname(xsd_file_path)
-        if not self.xsd_path:
-            self.xsd_path = "."
-
+    def __init__(self, json_schema):
         self.json_schema = json_schema
-        self.json_schema_version = {
-            'draft-04': "https://json-schema.org/draft-04/schema",
-            'draft-06': "https://json-schema.org/draft-06/schema",
-            'draft-07': "https://json-schema.org/draft-07/schema",
-            'draft-2019-09': "https://json-schema.org/draft/2019-09/schema",
-            'draft-2020-12': "https://json-schema.org/draft/2020-12/schema"
-        }
-
-        if json_schema in self.json_schema_version:
-            self.json_schema_uri = self.json_schema_version[json_schema]
-        else:
-            self.json_schema = 'draft-07'
-            self.json_schema_uri = self.json_schema_version['draft-07']
-
-        self.xsd_schema_included = []
         self.xsd_data_types = [
             'string', 'normalizedString', 'token', 'language', 'Name', 'NCName', 'QName', 'ENTITY', 'ENTITIES', 'ID', 'IDREF', 'IDREFS', 'NMTOKEN', 'NMTOKENS',
             'byte', 'unsignedByte', 'decimal', 'int', 'unsignedInt', 'integer', 'long', 'unsignedLong', 'negativeInteger', 'nonNegativeInteger', 'nonPositiveInteger', 'positiveInteger', 'short', 'unsignedShort',
             'date', 'dateTime', 'time', 'duration', 'gDay', 'gMonth', 'gMonthDay', 'gYear', 'gYearMonth',
             'anyURI', 'base64Binary', 'boolean', 'double', 'float', 'hexBinary', 'NOTATION'
         ]
-        self.xsd_elements_defs = {}
-        self.xsd_simple_type_defs = {}
-        self.xsd_complex_type_defs = {}
 
-        print(f"\nXSD schema")
-        print(f"  - path: {self.xsd_path}")
-        print(f"  - filename: {xsd_filename}")
-
-        print(f"\nJSON schema")
-        print(f"  - version: {self.json_schema}")
-        print(f"  - metaschema: {self.json_schema_uri}")
-
-        # Parse XSD schema
-        xsd_tree = self.parse_xsd_file(xsd_file_path)
-
-        # Create a flattened version of the XSD schema
-        # Create a root element with nsmap
-        print(f"\nCreate flattened XSD schema")
-        print(f"Add namespaces:")
-        for ns, val in xsd_tree.nsmap.items():
-            print(f"  - {ns}: {val}")
-        nsmap = xsd_tree.nsmap
-        self.xsd_flatten = etree.Element("{http://www.w3.org/2001/XMLSchema}schema", nsmap=nsmap)
-
-        # Add attributes
-        print(f"Add attributes:")
-        for attr, val in xsd_tree.attrib.items():
-            if not attr.startswith("xmlns"):
-                print(f"  - {attr}: {val}")
-                self.xsd_flatten.set(f"{attr}", f"{val}")
-
-        # Flatten the XSD schema
-        print(f"Flattening the XSD schema")
-        for elem in list(xsd_tree):
-            if self.is_include_node(elem):
-                schema_location = elem.get("schemaLocation")
-                if schema_location not in self.xsd_schema_included:
-                    self.xsd_schema_included.append(schema_location)
-                    self.flatten_xsd_schema(self.xsd_path + '/' + schema_location)
-                    print(f"  - {schema_location}")
-                else:
-                    print(f"  - {schema_location} has already been imported")
-            else:
-                clone = copy.deepcopy(elem)
-                self.xsd_flatten.append(clone)
-        if not self.xsd_schema_included:
-            print(f"  > Nothing to flatten")
-
-        # Save flattened version of the XSD schema to file
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        xsd_flattened_filename = f"{output_path}/{prefix}_{xsd_filename.split('.')[0]}_flattened.xsd"
-        self.xsd_to_file(xsd_flattened_filename, self.xsd_flatten)
-
-        # Extract top-level elements
-        print(f"\nExtract top-level elements")
-        self.xsd_elements_defs = self.xsd_extract_elements(self.xsd_flatten)
-        print(f"  > elements: {len(self.xsd_elements_defs.get('properties'))}")
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        json_filename = f"{output_path}/{prefix}_elements_defs.json"
-        self.json_to_file(json_filename, self.xsd_elements_defs)
-
-        # Extract top-level simpleType
-        print(f"\nExtract simpleType")
-        self.xsd_simple_type_defs = self.extract_simple_types(self.xsd_flatten)
-        print(f"  > simpleType: {len(self.xsd_simple_type_defs)}")
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        json_filename = f"{output_path}/{prefix}_simple_type_defs.json"
-        self.json_to_file(json_filename, self.xsd_simple_type_defs)
-
-        # Extract top-level complexType
-        print(f"\nExtract complexType")
-        self.xsd_complex_type_defs = self.extract_complex_types(self.xsd_flatten)
-        print(f"  > complexType: {len(self.xsd_complex_type_defs)}")
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        json_filename = f"{output_path}/{prefix}_complex_type_defs.json"
-        self.json_to_file(json_filename, self.xsd_complex_type_defs)
-
-        # Create JSON Schema with defs
-        print(f"\nCreate JSON schema with defs")
-        json_schema_with_defs = {
-            '$schema': self.json_schema_uri,
-            'version': "0.0.1",
-            'title': "title",
-            'type': "object",
-        }
-
-        # Add elements_defs
-        json_schema_with_defs.update(self.xsd_elements_defs)
-
-        # Add full defs
-        full_defs = {}
-        full_defs.update(self.xsd_simple_type_defs)
-        full_defs.update(self.xsd_complex_type_defs)
-        json_schema_with_defs["$defs"] =  full_defs
-
-        # Write JSON Schema to file
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        json_filename = f"{output_path}/{prefix}_{xsd_filename.split('.')[0]}_with_defs.json"
-        self.json_to_file(json_filename, json_schema_with_defs)
-
-        # Validate schema
-        self.validate_json_schema(json_filename)
-
-        # Resolved $defs schema
-        print(f"\nResolve $defs")
-        resolved =  self.flatten_json_schema(json_schema_with_defs, full_defs)
-        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
-        json_filename = f"{output_path}/{prefix}_{xsd_filename.split('.')[0]}_resolved.json"
-        self.json_to_file(json_filename, resolved)
-
-        # Validate schema
-        self.validate_json_schema(json_filename)
-
-
-    def is_xsd_file(self, file_path):
-        """
-        Checks if the given file is a valid XSD file.
-        Checks if:
-        - the file can be opened and parsed as XML.
-        - the root element is an <xsd:schema>.
-        - the namespace matches the standard XML Schema namespace.
-
-        Args:
-            file_path (str): Full path to the file to check.
-
-        Returns:
-            bool: True if the file is a valid XSD, False otherwise.
-        """
-        try:
-            tree = etree.parse(file_path)
-            root = tree.getroot()
-            return etree.QName(root.tag).localname == "schema" and \
-                   etree.QName(root.tag).namespace == "http://www.w3.org/2001/XMLSchema"
-        except Exception:
-            return False
-
-
-    def parse_xsd_file(self, file_path):
-        """
-        Open and parse the XSD Schema
-
-        Args:
-            file_path (str): Full path to XSD Schema
-
-        Returns:
-            tree
-        """
-        with open(file_path, 'rb') as file:
-            xsd_content = file.read()
-        parser = etree.XMLParser(remove_blank_text=True)
-        return etree.XML(xsd_content, parser)
-
-
-    def is_include_node(self, element):
-        """
-        Checks if the XML element is an <xsd:include> or <xsd:import> tag.
-        Checks:
-        - that the element belongs to the XML Schema namespace (`http://www.w3.org/2001/XMLSchema`),
-        - and that its local name is 'include' or 'import'.
-
-        Args:
-            element (etree.Element): An XML element to test.
-
-        Returns:
-            bool: True if the element is an <xsd:include> or <xsd:import>, False otherwise.
-        """
-
-        if element.tag is etree.Comment:
-           return False
-
-        qname = etree.QName(element.tag)
-        return True if qname.namespace == "http://www.w3.org/2001/XMLSchema" and (qname.localname == 'include' or qname.localname == 'import') else False
-
-
-    def flatten_xsd_schema(self, schema_location):
-        """
-        Flatten XSD Schema
-
-        Args:
-            schema_location (str): a schemaLocation
-        """
-        schema = self.parse_xsd_file(schema_location)
-        for elem in list(schema):
-            if self.is_include_node(elem):
-                schema_location = elem.get("schemaLocation")
-                if schema_location not in self.xsd_schema_included:
-                    self.xsd_schema_included.append(schema_location)
-                    self.flatten_xsd_schema(self.xsd_path + '/' + schema_location)
-                    print(f"  - {schema_location}")
-                else:
-                    print(f"  - {schema_location} has already been imported")
-            else:
-                # copy elem
-                clone = copy.deepcopy(elem)
-                self.xsd_flatten.append(clone)
-
-
-
-    def xsd_extract_elements(self, tree):
+    def extract_elements(self, node):
         """
         Extract top-level elements
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
             dict: JSON Schema representation of elements
@@ -279,7 +28,7 @@ class XSDParser:
         properties = {}
         required = []
 
-        for element in tree.xpath('./xsd:element', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+        for element in node.xpath('./xsd:element', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
             name = element.attrib.get('name')
             min_occurs = int(element.attrib.get('minOccurs', '1'))
 
@@ -300,13 +49,12 @@ class XSDParser:
 
         return elements_defs
 
-
-    def extract_simple_types(self, tree):
+    def extract_simple_types(self, node):
         """
         Extract top-level simpleTypes
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
             dict: JSON Schema representation of simpleType
@@ -320,7 +68,7 @@ class XSDParser:
         # xsd:simpleType content (annotation?,(restriction|list|union))
         simple_types_defs = {}
 
-        for simple_type in tree.xpath('./xsd:simpleType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+        for simple_type in node.xpath('./xsd:simpleType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
             description = {}
             name = simple_type.attrib.get('name')
             print(f"  - {name}")
@@ -346,13 +94,12 @@ class XSDParser:
 
         return simple_types_defs
 
-
-    def extract_complex_types(self, tree):
+    def extract_complex_types(self, node):
         """
         Extract top-level complexTypes
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
             dict: JSON Schema representation of complexType
@@ -367,7 +114,7 @@ class XSDParser:
         complex_types_defs = {}
         description = {}
 
-        for complex_type in tree.xpath('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+        for complex_type in node.xpath('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
             export_as_properties = True
             name = complex_type.attrib.get('name')
             if not name:
@@ -425,17 +172,32 @@ class XSDParser:
         return complex_types_defs
 
 
-
-    def xsd_not_supported(self, element_name):
+    def xsd_not_supported(self, name):
         """
         Print message onto the screen
 
         Args:
-            element_name (str): XML element name
+            name (str): XML element name
         """
-        print(f"    ❌ xsd:{element_name} not supported")
+        print(f"    ❌ xsd:{name} not supported")
 
+    def xsd_annotation_to_json(self, tree):
+        """
+        Return the JSON Schema equivalent for the XML Schema annotation
 
+        Args:
+            tree (etree.Element): XML element to processed
+
+        Returns:
+            dict: JSON Schema representation for the XML element
+        """
+
+        # xsd:annotation content: (appinfo|documentation)*
+        description = ""
+        for documentation in tree.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+            description += ' '.join(documentation.text.split()) + ' '
+
+        return {'description': description.strip()}
 
     def xsd_data_type_to_json(self, data_type):
         """
@@ -587,26 +349,6 @@ class XSDParser:
 
         return schema
 
-
-    def xsd_annotation_to_json(self, tree):
-        """
-        Return the JSON Schema equivalent for the XML Schema annotation
-
-        Args:
-            tree (etree.Element): XML element to processed
-
-        Returns:
-            dict: JSON Schema representation for the XML element
-        """
-
-        # xsd:annotation content: (appinfo|documentation)*
-        description = ""
-        for documentation in tree.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
-            description += ' '.join(documentation.text.split()) + ' '
-
-        return {'description': description.strip()}
-
-
     def xsd_attribute_to_json(self, element):
         """
         Return the JSON Schema equivalent for the XML Schema attribute
@@ -642,7 +384,6 @@ class XSDParser:
                 attribute_defs[name] = {'$ref': f"#/$defs/{type_}"}
 
         return attribute_defs
-
 
     def xsd_choice_tp_json(self, tree, export_as_properties = False):
         """
@@ -703,7 +444,6 @@ class XSDParser:
 
         return choice
 
-
     def xsd_complex_content_to_json(self, tree):
         """
         Return the JSON Schema equivalent for the XML Schema complexContent
@@ -732,7 +472,6 @@ class XSDParser:
             complex_content_schema = self.xsd_extension_to_json(extension)
 
         return complex_content_schema
-
 
     def xsd_complex_type_to_json(self, tree):
         """
@@ -783,7 +522,6 @@ class XSDParser:
             complex_type_schema.update(description)
 
         return complex_type_schema
-
 
     def xsd_element_to_json(self, element):
         """
@@ -846,7 +584,6 @@ class XSDParser:
 
         return element_schema
 
-
     def xsd_extension_to_json(self, tree):
         """
         Return the JSON Schema equivalent for the XML Schema extension
@@ -896,7 +633,6 @@ class XSDParser:
         }
 
         return extension
-
 
     def xsd_restriction_to_json(self, element, parent_tag):
         """
@@ -978,7 +714,6 @@ class XSDParser:
 
         return restriction
 
-
     def xsd_sequence_to_json(self, tree):
         """
         Return the JSON Schema equivalent for the XML sequence
@@ -1004,7 +739,7 @@ class XSDParser:
         one_of = []
 
         elements_count = len(tree.xpath('./xsd:element[@name]', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
-        chouices_count = len(tree.xpath('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
+        choices_count = len(tree.xpath('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
         export_choice_as_properties = True if elements_count > 0 else False;
 
         for element in tree:
@@ -1046,7 +781,6 @@ class XSDParser:
 
         return sequence_schema
 
-
     def xsd_simple_content_to_json(self, tree):
         """
         Return the JSON Schema equivalent for the XML simpleContent
@@ -1076,7 +810,6 @@ class XSDParser:
             simple_content_schema = self.xsd_extension_to_json(extension)
 
         return simple_content_schema
-
 
     def xsd_simple_type_to_json(self, tree):
         """
@@ -1119,153 +852,3 @@ class XSDParser:
             simple_type_schema.update(description)
 
         return simple_type_schema
-
-
-
-    def validate_json_schema(self, schema_path):
-        """
-        Validates that a JSON file is a valid JSON schema according to the specification
-
-        Args:
-            schema_path (str): JSON schema to validate
-        """
-
-        # Open the schema
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            schema_to_validate = json.load(f)
-
-        # Get schema version and validator class
-        version = schema_to_validate.get('$schema')
-        if "draft-04" in version:
-            ValidatorClass = Draft4Validator
-            schema_version = "draft-04"
-        elif "draft-06" in version:
-            ValidatorClass = Draft6Validator
-            schema_version = "draft-06"
-        elif "draft-07" in version:
-            ValidatorClass = Draft7Validator
-            schema_version = "draft-07"
-        elif "2019-09" in version:
-            ValidatorClass = Draft201909Validator
-            schema_version = "draft-2019-09"
-        elif "2020-12" in version:
-            ValidatorClass = Draft202012Validator
-            schema_version = "draft-2020-12"
-        else:
-             ValidatorClass = Draft7Validator
-             schema_version = "draft-07"
-
-        # Create a validator and traverse subschemas
-        with open(f"./json-schema/{schema_version}.json", "r", encoding="utf-8") as f:
-            meta_schema = json.load(f)
-
-        validator = ValidatorClass(meta_schema)
-        errors = sorted(validator.iter_errors(schema_to_validate), key=lambda e: e.path)
-
-        if errors:
-            print("❌ Errors found in JSON Schema:")
-            for err in errors:
-                path = ".".join(str(x) for x in err.path) if err.path else "(racine)"
-                print(f"- Path '{path}': {err.message}")
-
-        else:
-            print("✅ Valid JSON Schema.")
-
-
-    def flatten_json_schema(self, schema, defs):
-        """
-        Flatten JSON schema
-        """
-        resolved = self.resolve_schema(schema, defs)
-        if "$defs" in resolved:
-            del resolved["$defs"]  # remove unnecessary definitions
-        return resolved
-
-
-    def resolve_schema(self, obj, defs):
-        """
-        Recursively resolves $refs in a JSON schema.
-        """
-        if isinstance(obj, dict):
-            if "$ref" in obj:
-                resolved = self.resolve_ref(obj["$ref"], defs)
-                # Recursively resolves what the $ref contains
-                return self.resolve_schema(resolved, defs)
-            else:
-                return {k: self.resolve_schema(v, defs) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self.resolve_schema(item, defs) for item in obj]
-        else:
-            return obj  # Primitive value
-
-
-    def resolve_ref(self, ref, defs):
-            """
-            Resolves a #/$defs/xyz reference by returning a deep copy of the contents.
-            """
-            if not ref.startswith("#/$defs/"):
-                print(f"  - ❌ Reference not supported: {ref}")
-                return
-            key = ref.split("/")[-1]
-            if key not in defs:
-                print(f"  - ❌ Ref not found in $defs: {key}")
-                return
-            return copy.deepcopy(defs[key])
-
-
-
-    def xsd_to_file(self, filename, tree):
-        """
-        Write XSD Schema to file
-
-        Args:
-            filename (str): filename
-            tree (etree.Element): XML tree
-        """
-        xml_string = etree.tostring(tree, pretty_print=True, xml_declaration=True, encoding='UTF-8')
-        with open(filename, "wb") as f:
-            f.write(xml_string)
-        print(f"✅ XSD file written in '{filename}'")
-
-
-    def json_to_file(self, filename, json_data):
-        """
-        Write JSON data to file
-
-        Args:
-            filename (str): filename
-            json_data (dict): JSON data
-        """
-        with open(filename, "w") as f:
-            json.dump(json_data, f, indent=4)
-        print(f"✅ JSON representation written in '{filename}'")
-
-
-
-# Vars
-json_schema_version = ["draft-04", "draft-06", "draft-07", "draft-2019-09", "draft-2020-12"]
-
-# Get XSD Schema from command-line argument
-if len(sys.argv) < 2:
-    print("usage:", sys.argv[0], "<inputfile>\n")
-    sys.exit()
-xsd_file_path = sys.argv[1]
-
-# Get Json schema version
-print("------------------------------")
-for i in range(len(json_schema_version)):
-    print( f'{i:4}: {json_schema_version[i]}')
-print("------------------------------")
-
-while True:
-    try:
-        num = int(input("Select JSON schema: "))
-        if num < 0 or num >= len(json_schema_version):
-            raise ValueError()
-    except ValueError:
-        print("This is not a valid JSON schema.")
-        continue
-    else:
-        break
-
-xsd = XSDParser(xsd_file_path, json_schema_version[num])

@@ -2,6 +2,7 @@
 .DS_Store
 ._*
 _*
+!__*
 *.sublime-project
 *.sublime-workspace
 
