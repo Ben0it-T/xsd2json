@@ -4,6 +4,7 @@ import os
 import sys
 import datetime
 import json
+import yaml
 import copy
 from pathlib import Path
 from os.path import exists as path_exists
@@ -154,6 +155,12 @@ class XSDParser:
         # Validate schema
         validate_json_schema(json_filename)
 
+        # Dump properties into yaml and save to file
+        yaml_string = yaml.dump(resolved)
+        prefix = datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
+        yaml_filename = f"{output_path}/{prefix}_{xsd_filename.split('.')[0]}_properties.yaml"
+        self.yaml_to_file(yaml_filename, resolved["properties"])
+
 
     def is_xsd_file(self, file_path):
         """
@@ -211,6 +218,7 @@ class XSDParser:
 
         qname = etree.QName(element.tag)
         return True if qname.namespace == "http://www.w3.org/2001/XMLSchema" and (qname.localname == 'include' or qname.localname == 'import') else False
+
 
     def flatten_xsd_schema(self, schema_location):
         """
@@ -298,3 +306,15 @@ class XSDParser:
         with open(filename, "w") as f:
             json.dump(json_data, f, indent=4)
         print(f"✅ JSON representation written in '{filename}'")
+
+    def yaml_to_file(self, filename, json_data):
+        """
+        Dump JSON data into yaml and save to file
+
+        Args:
+            filename (str): filename
+            json_data (dict): JSON data
+        """
+        with open(filename, "w") as f:
+            yaml.dump(json_data, f, default_flow_style=False, indent=2, sort_keys=False)
+        print(f"✅ JSON representation converted to YAML and written in '{filename}'")
