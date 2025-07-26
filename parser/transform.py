@@ -669,7 +669,10 @@ class Transformer:
                 value = f"{elem.attrib['value']}"
 
                 if localname == "enumeration":
-                    enums.append(value)
+                    if type_ in ["integer", "number"]:
+                        enums.append(int(value))
+                    else:
+                        enums.append(value)
                 elif localname == "length":
                     restriction["minLength"] = int(value)
                     restriction["maxLength"] = int(value)
