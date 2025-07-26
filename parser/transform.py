@@ -16,7 +16,7 @@ class Transformer:
 
     def extract_elements(self, node):
         """
-        Extract top-level elements
+        Extracts top-level elements
 
         Args:
             node (etree.Element): XML element to processed
@@ -51,13 +51,13 @@ class Transformer:
 
     def extract_simple_types(self, node):
         """
-        Extract top-level simpleTypes
+        Extracts top-level simpleTypes
 
         Args:
             node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation of simpleType
+            dict: JSON Schema representation of simpleTypes
         """
 
         # xsd:simpleType attributes
@@ -96,13 +96,13 @@ class Transformer:
 
     def extract_complex_types(self, node):
         """
-        Extract top-level complexTypes
+        Extracts top-level complexTypes
 
         Args:
             node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation of complexType
+            dict: JSON Schema representation of complexTypes
         """
 
         # xsd:complexType attributes
@@ -174,40 +174,40 @@ class Transformer:
 
     def xsd_not_supported(self, name):
         """
-        Print message onto the screen
+        Prints message onto the screen
 
         Args:
             name (str): XML element name
         """
         print(f"    ❌ xsd:{name} not supported")
 
-    def xsd_annotation_to_json(self, tree):
+    def xsd_annotation_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema annotation
+        Converts xsd:annotation to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
-        # xsd:annotation content: (appinfo|documentation)*
+        # xsd:annotation content (appinfo|documentation)*
         description = ""
-        for documentation in tree.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+        for documentation in node.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
             description += ' '.join(documentation.text.split()) + ' '
 
         return {'description': description.strip()}
 
     def xsd_data_type_to_json(self, data_type):
         """
-        Returns the JSON Schema equivalent for the XML Schema data type
+        Converts XSD data type to JSON Schema type
 
         Args:
-            data_type (str): Name of the XSD type (e.g., 'string', 'date', 'positiveInteger', etc.)
+            data_type (str): Name of the XSD data type (e.g., 'string', 'date', 'positiveInteger', etc.)
 
         Returns:
-            dict: JSON Schema representation of the type
+            dict: JSON Schema type
         """
 
         # String Data Types
@@ -349,30 +349,29 @@ class Transformer:
 
         return schema
 
-    def xsd_attribute_to_json(self, element):
+    def xsd_attribute_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema attribute
+        Converts xsd:attribute to JSON Schema equivalent
 
         Args:
-            element (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML attribute
+            dict: JSON Schema representation
         """
 
         # xsd:attribute attributes
         # @name: Optional. Specifies the name of the attribute. Name and ref attributes cannot both be present
         # @type: Optional. Specifies a built-in data type or a simple type. The type attribute can only be present when the content does not contain a simpleType element
         # @use: Optional. Specifies how the attribute is used. Values: optional, prohibited, required
-        type_ = element.attrib.get('type', '').split(':')[-1] or None
-        name = element.attrib.get('name')
-        use = element.attrib.get('use')
+        type_ = node.attrib.get('type', '').split(':')[-1] or None
+        name = node.attrib.get('name')
+        use = node.attrib.get('use')
 
         attribute_defs = {}
 
         if use == "prohibited" or not name:
             return attribute_defs
-
 
         if type_ is not None:
             if type_ in self.xsd_data_types:
@@ -385,16 +384,16 @@ class Transformer:
 
         return attribute_defs
 
-    def xsd_choice_tp_json(self, tree, export_as_properties = False):
+    def xsd_choice_tp_json(self, node, export_as_properties = False):
         """
-        Return the JSON Schema equivalent for the XML Schema choice
+        Converts xsd:choice to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
             export_as_properties (bool): True to export as properties, False to export as 'oneOf'
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
         # xsd:choice attributes
@@ -402,14 +401,14 @@ class Transformer:
         # @maxOccurs : Optional. Specifies the maximum number of times the choice element can occur in the parent element. Default value is 1
         # @minOccurs : Optional. Specifies the minimum number of times the choice element can occur in the parent element. Default value is 1
 
-        # (annotation?,(element|group|choice|sequence|any)*)
+        # xsd:choice content (annotation?,(element|group|choice|sequence|any)*)
         choice = {}
         properties = {}
         required = []
         options = []
         one_of = []
 
-        for element in tree:
+        for element in node:
             tag = etree.QName(element).localname
             if tag == 'element':
                 name = element.attrib.get('name')
@@ -444,44 +443,44 @@ class Transformer:
 
         return choice
 
-    def xsd_complex_content_to_json(self, tree):
+    def xsd_complex_content_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema complexContent
+        Converts xsd:complexContent to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
-        # xsd: content: (annotation?,(restriction|extension))
+        # xsd:complexContent content (annotation?,(restriction|extension))
         complex_content_schema = {}
         description = {}
 
-        annotation = tree.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        annotation = node.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if annotation is not None:
             description = self.xsd_annotation_to_json(annotation)
 
-        restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        restriction = node.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
             complex_content_schema = self.xsd_restriction_to_json(restriction, "complexContent")
 
-        extension = tree.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        extension = node.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
             complex_content_schema = self.xsd_extension_to_json(extension)
 
         return complex_content_schema
 
-    def xsd_complex_type_to_json(self, tree):
+    def xsd_complex_type_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema complexType
+        Converts xsd:complexType to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
         # xsd:complexType attributes
@@ -489,31 +488,31 @@ class Transformer:
         # @name : Optional. Specifies a name for the element
         # @any attributes: Optional. Specifies any other attributes with non-schema namespace
 
-        # xsd:complexType (annotation?,(simpleContent|complexContent|((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))))
+        # xsd:complexType content (annotation?,(simpleContent|complexContent|((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))))
         complex_type_schema = {}
         description = {}
 
-        annotation = tree.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        annotation = node.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if annotation is not None:
             description = self.xsd_annotation_to_json(annotation)
 
-        simpleContent = tree.find('./xsd:simpleContent', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        simpleContent = node.find('./xsd:simpleContent', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if simpleContent is not None:
             complex_type_schema = self.xsd_simple_content_to_json(simpleContent)
 
-        complexContent = tree.find('./xsd:complexContent', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        complexContent = node.find('./xsd:complexContent', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if complexContent is not None:
             complex_type_schema = self.xsd_complex_content_to_json(complexContent)
 
-        choice = tree.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        choice = node.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if choice is not None:
             complex_type_schema = self.xsd_choice_tp_json(choice)
 
-        sequence = tree.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        sequence = node.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if sequence is not None:
             complex_type_schema = self.xsd_sequence_to_json(sequence)
 
-        attribute = tree.find('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        attribute = node.find('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if attribute is not None:
             self.xsd_not_supported('attribute')
 
@@ -523,15 +522,15 @@ class Transformer:
 
         return complex_type_schema
 
-    def xsd_element_to_json(self, element):
+    def xsd_element_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema element
+        Converts xsd:element to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
         # xsd:element attributes
@@ -539,12 +538,12 @@ class Transformer:
         # @type      : Optional. Specifies either the name of a built-in data type, or the name of a simpleType or complexType element
         # @maxOccurs : Optional. Default value is 1
         # @minOccurs : Optional. Default value is 1
-        type_ = element.attrib.get('type', '').split(':')[-1] or None
-        min_occurs = int(element.attrib.get('minOccurs', '1'))
-        max_occurs = element.attrib.get('maxOccurs', '1')
+        type_ = node.attrib.get('type', '').split(':')[-1] or None
+        min_occurs = int(node.attrib.get('minOccurs', '1'))
+        max_occurs = node.attrib.get('maxOccurs', '1')
         max_occurs = int(99999) if max_occurs == "unbounded" else int(max_occurs)
 
-        # xsd:element content: annotation?,(simpleType|complexType)?,(unique|key|keyref)*
+        # xsd:element content (annotation?,(simpleType|complexType)?,(unique|key|keyref)*)
         element_schema = {}
         description = {}
         if type_ is not None:
@@ -555,15 +554,15 @@ class Transformer:
                 # simpleType or complexType element
                 element_schema = {'$ref': f"#/$defs/{type_}"}
         else:
-            annotation = element.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            annotation = node.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if annotation is not None:
                 description = self.xsd_annotation_to_json(annotation)
 
-            simple_type = element.find('./xsd:simpleType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            simple_type = node.find('./xsd:simpleType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if simple_type is not None:
                 element_schema = self.xsd_simple_type_to_json(simple_type)
 
-            complex_type = element.find('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            complex_type = node.find('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if complex_type is not None:
                 element_schema = self.xsd_complex_type_to_json(complex_type)
 
@@ -584,20 +583,20 @@ class Transformer:
 
         return element_schema
 
-    def xsd_extension_to_json(self, tree):
+    def xsd_extension_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema extension
+        Converts xsd:extension to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
         # xsd:extension attributes
         # base: Required. Specifies the name of a built-in data type, a simpleType element, or a complexType element
-        base = tree.attrib.get('base').split(":")[-1]
+        base = node.attrib.get('base').split(":")[-1]
 
         # xsd:extension content:
         # (annotation?,((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?)))
@@ -613,7 +612,7 @@ class Transformer:
             options.append({'$ref': f"#/$defs/{base}"})
 
 
-        for element in tree:
+        for element in node:
             tag = etree.QName(element).localname
 
             if tag == "sequence":
@@ -634,23 +633,23 @@ class Transformer:
 
         return extension
 
-    def xsd_restriction_to_json(self, element, parent_tag):
+    def xsd_restriction_to_json(self, node, parent_tag):
         """
-        Return the JSON Schema equivalent for the XML Restrictions/Facets
+        Converts xsd:restriction to JSON Schema equivalent
 
         Args:
-            element (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
             parent_tag (str): parent element tag
 
         Returns:
-            dict: JSON Schema representation of the XML Restrictions/Facets
+            dict: JSON Schema representation
         """
 
         # xsd:restriction attributes
         # @id   : Optional. Specifies a unique ID for the element
         # @base : Required. Specifies the name of a built-in data type, simpleType element, or complexType element defined in this schema or another schema
         # @any attributes  : Optional. Specifies any other attributes with non-schema namespace
-        type_ = element.attrib.get('base', '').split(':')[-1] or None
+        type_ = node.attrib.get('base', '').split(':')[-1] or None
 
         if type_ in self.xsd_data_types:
             # built-in data type
@@ -665,7 +664,7 @@ class Transformer:
 
         if parent_tag == "simpleType" or parent_tag == "simpleContent":
             enums = []
-            for elem in list(element):
+            for elem in list(node):
                 localname = etree.QName(elem.tag).localname
                 value = f"{elem.attrib['value']}"
 
@@ -704,25 +703,25 @@ class Transformer:
                 restriction["enum"] = enums
 
         if parent_tag == "complexContent":
-            choice = element.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            choice = node.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if choice is not None:
                 restriction = self.xsd_choice_tp_json(choice)
 
-            sequence = element.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            sequence = node.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if sequence is not None:
                 restriction = self.xsd_sequence_to_json(sequence)
 
         return restriction
 
-    def xsd_sequence_to_json(self, tree):
+    def xsd_sequence_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML sequence
+        Converts xsd:sequence to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML sequence to processed
+            node (etree.Element): XML sequence to processed
 
         Returns:
-            dict: JSON Schema representation of sequence
+            dict: JSON Schema representation
         """
 
         # xsd:sequence attributes
@@ -738,11 +737,11 @@ class Transformer:
         required = []
         one_of = []
 
-        elements_count = len(tree.xpath('./xsd:element[@name]', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
-        choices_count = len(tree.xpath('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
+        elements_count = len(node.xpath('./xsd:element[@name]', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
+        choices_count = len(node.xpath('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}))
         export_choice_as_properties = True if elements_count > 0 else False;
 
-        for element in tree:
+        for element in node:
             tag = etree.QName(element).localname
             if tag == 'element':
                 name = element.attrib.get('name')
@@ -781,45 +780,45 @@ class Transformer:
 
         return sequence_schema
 
-    def xsd_simple_content_to_json(self, tree):
+    def xsd_simple_content_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML simpleContent
+        Converts xsd:simpleContent to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML sequence to processed
+            node (etree.Element): XML sequence to processed
 
         Returns:
-            dict: JSON Schema representation of simpleContent
+            dict: JSON Schema representation
         """
 
-        # xsd:simpleContent content: (annotation?,(restriction|extension))
+        # xsd:simpleContent content (annotation?,(restriction|extension))
 
         simple_content_schema = {}
         description = {}
 
-        annotation = tree.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        annotation = node.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if annotation is not None:
             description = self.xsd_annotation_to_json(annotation)
 
-        restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        restriction = node.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
             simple_content_schema = self.xsd_restriction_to_json(restriction, "simpleContent")
 
-        extension = tree.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        extension = node.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
             simple_content_schema = self.xsd_extension_to_json(extension)
 
         return simple_content_schema
 
-    def xsd_simple_type_to_json(self, tree):
+    def xsd_simple_type_to_json(self, node):
         """
-        Return the JSON Schema equivalent for the XML Schema simpleType
+        Converts xsd:simpleType to JSON Schema equivalent
 
         Args:
-            tree (etree.Element): XML element to processed
+            node (etree.Element): XML element to processed
 
         Returns:
-            dict: JSON Schema representation for the XML element
+            dict: JSON Schema representation
         """
 
         # xsd:simpleType attributes
@@ -827,23 +826,23 @@ class Transformer:
         # @name : Specifies a name for the element. This attribute is required if the simpleType element is a child of the schema element, otherwise it is not allowed
         # @any attributes: Optional. Specifies any other attributes with non-schema namespace
 
-        # xsd:simpleType content: (annotation?,(restriction|list|union))
+        # xsd:simpleType content (annotation?,(restriction|list|union))
         simple_type_schema = {}
         description = {}
 
-        annotation = tree.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        annotation = node.find('./xsd:annotation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if annotation is not None:
             description = self.xsd_annotation_to_json(annotation)
 
-        restriction = tree.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        restriction = node.find('./xsd:restriction', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if restriction is not None:
             simple_type_schema = self.xsd_restriction_to_json(restriction, "simpleType")
 
-        list_ = tree.find('./xsd:list', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        list_ = node.find('./xsd:list', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if list_ is not None:
             self.xsd_not_supported('list')
 
-        union = tree.find('./xsd:union', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        union = node.find('./xsd:union', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if union is not None:
             self.xsd_not_supported('union')
 
