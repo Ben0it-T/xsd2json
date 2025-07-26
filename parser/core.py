@@ -124,7 +124,7 @@ class XSDParser:
         json_schema_with_defs = {
             '$schema': json_schema_uri,
             'version': "0.0.1",
-            'title': "title",
+            'title': xsd_filename.split('.')[0],
             'type': "object",
         }
 
