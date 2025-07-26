@@ -11,7 +11,8 @@ class Transformer:
             'string', 'normalizedString', 'token', 'language', 'Name', 'NCName', 'QName', 'ENTITY', 'ENTITIES', 'ID', 'IDREF', 'IDREFS', 'NMTOKEN', 'NMTOKENS',
             'byte', 'unsignedByte', 'decimal', 'int', 'unsignedInt', 'integer', 'long', 'unsignedLong', 'negativeInteger', 'nonNegativeInteger', 'nonPositiveInteger', 'positiveInteger', 'short', 'unsignedShort',
             'date', 'dateTime', 'time', 'duration', 'gDay', 'gMonth', 'gMonthDay', 'gYear', 'gYearMonth',
-            'anyURI', 'base64Binary', 'boolean', 'double', 'float', 'hexBinary', 'NOTATION'
+            'anyURI', 'base64Binary', 'boolean', 'double', 'float', 'hexBinary', 'NOTATION',
+            'anyType', 'anySimpleType'
         ]
 
     def extract_elements(self, node):
@@ -341,6 +342,11 @@ class Transformer:
             schema = {'type': "string", 'pattern': "^([0-9a-fA-F]{2})*$"}
         elif data_type == "NOTATION":
             schema = {'type': "string"}
+        elif data_type == "anyType":
+            schema = {'type': ["string", "integer", "number", "boolean", "null"]}
+        elif data_type == "anySimpleType":
+            schema = {'type': ["string", "integer", "number", "boolean", "null"]}
+
 
         else:
             schema = {'type': data_type}
