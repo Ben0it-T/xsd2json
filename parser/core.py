@@ -34,7 +34,7 @@ class XSDParser:
             'draft-06': "https://json-schema.org/draft-06/schema",
             'draft-07': "https://json-schema.org/draft-07/schema",
             'draft-2019-09': "https://json-schema.org/draft/2019-09/schema",
-            'draft-2020-123': "https://json-schema.org/draft/2020-12/schema"
+            'draft-2020-12': "https://json-schema.org/draft/2020-12/schema"
         }
         if json_schema in json_schema_versions:
             json_schema_uri = json_schema_versions[json_schema]
