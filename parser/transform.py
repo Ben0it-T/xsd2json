@@ -115,7 +115,6 @@ class Transformer:
         description = {}
 
         for complex_type in node.xpath('./xsd:complexType', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
-            export_as_properties = True
             name = complex_type.attrib.get('name')
             if not name:
                 continue
@@ -137,20 +136,19 @@ class Transformer:
             if complexContent is not None:
                 complex_types_defs[name] = self.xsd_complex_content_to_json(complexContent)
 
-
-            attributes = complex_type.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
-            if attributes is not None:
-                export_as_properties = True
-
-
             choice = complex_type.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if choice is not None:
-                complex_types_defs[name] = self.xsd_choice_tp_json(choice)
+                export_as_properties = False
+                attr = complex_type.find('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+                if attr is not None:
+                    export_as_properties = True
+                complex_types_defs[name] = self.xsd_choice_tp_json(choice, export_as_properties)
 
             sequence = complex_type.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if sequence is not None:
                 complex_types_defs[name] = self.xsd_sequence_to_json(sequence)
 
+            attributes = complex_type.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
             if attributes is not None:
                 if name not in complex_types_defs:
                     complex_types_defs[name] = {'type': "object", 'properties':{}}
@@ -506,16 +504,23 @@ class Transformer:
 
         choice = node.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if choice is not None:
-            complex_type_schema = self.xsd_choice_tp_json(choice)
+            export_as_properties = False
+            attr = node.find('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if attr is not None:
+                export_as_properties = True
+            complex_type_schema = self.xsd_choice_tp_json(choice, export_as_properties)
 
         sequence = node.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if sequence is not None:
             complex_type_schema = self.xsd_sequence_to_json(sequence)
 
-        attribute = node.find('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
-        if attribute is not None:
-            self.xsd_not_supported('attribute')
-
+        attributes = node.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+        if attributes is not None:
+            if complex_type_schema:
+                for attribute in attributes:
+                    attribute_def = self.xsd_attribute_to_json(attribute)
+                    if attribute_def:
+                        complex_type_schema['properties'].update(attribute_def)
 
         if description:
             complex_type_schema.update(description)
