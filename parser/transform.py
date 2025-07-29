@@ -180,24 +180,6 @@ class Transformer:
         """
         print(f"    ❌ xsd:{name} not supported")
 
-    def xsd_annotation_to_json(self, node):
-        """
-        Converts xsd:annotation to JSON Schema equivalent
-
-        Args:
-            node (etree.Element): XML element to processed
-
-        Returns:
-            dict: JSON Schema representation
-        """
-
-        # xsd:annotation content (appinfo|documentation)*
-        description = ""
-        for documentation in node.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
-            description += ' '.join(documentation.text.split()) + ' '
-
-        return {'description': description.strip()}
-
     def xsd_data_type_to_json(self, data_type):
         """
         Converts XSD data type to JSON Schema type
@@ -352,6 +334,25 @@ class Transformer:
             schema = {'type': data_type}
 
         return schema
+
+
+    def xsd_annotation_to_json(self, node):
+        """
+        Converts xsd:annotation to JSON Schema equivalent
+
+        Args:
+            node (etree.Element): XML element to processed
+
+        Returns:
+            dict: JSON Schema representation
+        """
+
+        # xsd:annotation content (appinfo|documentation)*
+        description = ""
+        for documentation in node.xpath('./xsd:documentation', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'}):
+            description += ' '.join(documentation.text.split()) + ' '
+
+        return {'description': description.strip()}
 
     def xsd_attribute_to_json(self, node):
         """
