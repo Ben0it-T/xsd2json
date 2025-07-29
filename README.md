@@ -32,7 +32,7 @@ Outputs will be saved under the ./output directory:
 - JSON Schema:
   - with_defs.json — contains $defs
   - resolved.json — fully flattened schema
-- YAML file - contains properties
+- YAML file — contains properties
 
 ## Limitations
 
