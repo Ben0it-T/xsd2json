@@ -472,7 +472,7 @@ class Transformer:
 
         extension = node.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
-            complex_content_schema = self.xsd_extension_to_json(extension)
+            complex_content_schema = self.xsd_extension_to_json(extension, "complexContent")
 
         return complex_content_schema
 
@@ -594,12 +594,13 @@ class Transformer:
 
         return element_schema
 
-    def xsd_extension_to_json(self, node):
+    def xsd_extension_to_json(self, node, parent_tag):
         """
         Converts xsd:extension to JSON Schema equivalent
 
         Args:
             node (etree.Element): XML element to processed
+            parent_tag (str): parent element tag (simpleContent or complexContent)
 
         Returns:
             dict: JSON Schema representation
@@ -610,31 +611,60 @@ class Transformer:
         base = node.attrib.get('base').split(":")[-1]
 
         # xsd:extension content:
-        # (annotation?,((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?)))
+        # Parent element
+        #   - simpleContent: (annotation?, ((attribute | attributeGroup)*, anyAttribute?))
+        #   - complexContent: (annotation?, ((group | all | choice | sequence)?, ((attribute | attributeGroup)*, anyAttribute?)))
 
-        options = []
-        combinations = "allOf"
+        if parent_tag == "simpleContent":
+            options = {}
+            combinations = "properties"
+            if base in self.xsd_data_types:
+                # built-in data type
+                options.update({'value': self.xsd_data_type_to_json(base)})
+            else:
+                # simpleType
+                options.update({'value': {'$ref': f"#/$defs/{base}"}})
 
-        if base in self.xsd_data_types:
-            # built-in data type
-            options.append(self.xsd_data_type_to_json(base))
-        else:
-            # simpleType or complexType element
-            options.append({'$ref': f"#/$defs/{base}"})
+            attributes = node.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if attributes is not None:
+                for attribute in attributes:
+                    attribute_def = self.xsd_attribute_to_json(attribute)
+                    if attribute_def:
+                        options.update(attribute_def)
+
+        elif parent_tag == "complexContent":
+            options = []
+            combinations = "allOf"
+            if base in self.xsd_data_types:
+                # built-in data type
+                # options.append(self.xsd_data_type_to_json(base))
+                options.append({'value': self.xsd_data_type_to_json(base)})
+            else:
+                # simpleType or complexType element
+                options.append({'$ref': f"#/$defs/{base}"})
+
+
+            sequence = node.find('./xsd:sequence', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if sequence is not None:
+                combinations = "allOf"
+                options.append(self.xsd_sequence_to_json(sequence))
+
+            choice = node.find('./xsd:choice', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if choice is not None:
+                combinations = "anyOf"
+                options.append(self.xsd_choice_tp_json(choice, True))
+
+            attributes = node.xpath('./xsd:attribute', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
+            if attributes is not None:
+                for attribute in attributes:
+                    attribute_def = self.xsd_attribute_to_json(attribute)
+                    if attribute_def:
+                        options.append(attribute_def)
 
 
         for element in node:
             tag = etree.QName(element).localname
-
-            if tag == "sequence":
-                combinations = "allOf"
-                options.append(self.xsd_sequence_to_json(element))
-
-            elif tag == "choice":
-                combinations = "anyOf"
-                options.append(self.xsd_choice_tp_json(element, True))
-
-            else:
+            if tag not in ["attribute", "sequence", "choice"]:
                 self.xsd_not_supported(tag)
 
         extension = {
@@ -820,7 +850,7 @@ class Transformer:
 
         extension = node.find('./xsd:extension', namespaces={'xsd': 'http://www.w3.org/2001/XMLSchema'})
         if extension is not None:
-            simple_content_schema = self.xsd_extension_to_json(extension)
+            simple_content_schema = self.xsd_extension_to_json(extension, "simpleContent")
 
         return simple_content_schema
 
