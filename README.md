@@ -21,7 +21,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python main.py path/to/schema.xsd
+python xsd2json.py path/to/schema.xsd
 ```
 
 Outputs will be saved under the ./output directory:
